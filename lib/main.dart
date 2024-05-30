@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_sensors/flutter_sensors.dart';
-import 'package:path_provider/path_provider.dart';
+import 'package:sensors_plus/sensors_plus.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'dart:async';
 import 'dart:io';
+import 'package:path_provider/path_provider.dart';
 
 void main() {
   runApp(const MyApp());
@@ -34,63 +35,108 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  final List<String> _sensorData = [];
-  late StreamSubscription _subscription;
-  late File _file;
-  bool _isSensorAvailable = false;
+  final List<Map<String, dynamic>> _sensorData = [];
+  late StreamSubscription<AccelerometerEvent> _subscription;
+  late Directory _directory;
   bool _isRecording = false;
   String _currentData = 'x: 0, y: 0, z: 0';
+  late DateTime _startTime;
+  late Timer _samplingTimer;
+  late Timer _fileTimer;
+  double _currentX = 0;
+  double _currentY = 0;
+  double _currentZ = 0;
 
   @override
   void initState() {
     super.initState();
-    _initializeFile();
-    _checkSensorAvailability();
+    _requestPermissions();
   }
 
-  Future<void> _initializeFile() async {
-    final directory = await getApplicationDocumentsDirectory();
-    final path = directory.path;
-    _file = File('$path/accelerometer_data.csv');
-    await _file.writeAsString('timestamp,x,y,z\n');
+  Future<void> _requestPermissions() async {
+    if (await Permission.storage.request().isGranted) {
+      await _initializeDirectory();
+    } else {
+      print('Storage permission denied');
+    }
   }
 
-  Future<void> _checkSensorAvailability() async {
-    final sensorAvailable = await SensorManager().isSensorAvailable(Sensors.ACCELEROMETER);
-    setState(() {
-      _isSensorAvailable = sensorAvailable;
-    });
+  Future<void> _initializeDirectory() async {
+    try {
+      final directory = await getExternalStorageDirectory();
+      if (directory != null) {
+        final path = Directory('${directory.path}/Csv');
+        if (!await path.exists()) {
+          await path.create(recursive: true);
+        }
+        _directory = path;
+        print('Directory path: ${_directory.path}');
+      } else {
+        print('Could not get external storage directory');
+      }
+    } catch (e) {
+      print('Error initializing directory: $e');
+    }
   }
 
-  void _startSensor() async {
-    final sensor = await SensorManager().sensorUpdates(
-      sensorId: Sensors.ACCELEROMETER,
-      interval: Duration(microseconds: Duration.microsecondsPerSecond ~/ 200),
-    );
-
-    _subscription = sensor.listen((event) {
-      final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final x = event.data[0];
-      final y = event.data[1];
-      final z = event.data[2];
-      final data = '$timestamp,$x,$y,$z\n';
-
+  void _startSensor() {
+    _startTime = DateTime.now();
+    _subscription = accelerometerEvents.listen((AccelerometerEvent event) {
       setState(() {
-        _currentData = 'x: $x, y: $y, z: $z';
+        _currentX = event.x;
+        _currentY = event.y;
+        _currentZ = event.z;
+        _currentData = 'x: $_currentX, y: $_currentY, z: $_currentZ';
+      });
+    });
+
+    // 10msごとにデータをサンプリング
+    _samplingTimer = Timer.periodic(Duration(milliseconds: 10), (timer) {
+      final now = DateTime.now();
+      final data = {
+        'timestamp': now.millisecondsSinceEpoch,
+        'x': _currentX,
+        'y': _currentY,
+        'z': _currentZ,
+      };
+      setState(() {
         _sensorData.add(data);
       });
+    });
 
-      _saveData(data);
+    _fileTimer = Timer.periodic(Duration(seconds: 30), (timer) async {
+      if (!_isRecording) {
+        timer.cancel();
+      } else {
+        await _saveData();
+        _sensorData.clear();
+      }
     });
   }
 
-  Future<void> _saveData(String data) async {
-    await _file.writeAsString(data, mode: FileMode.append);
+  Future<void> _saveData() async {
+    final fileName = DateTime.now().toIso8601String().replaceAll(':', '-');
+    final file = File('${_directory.path}/$fileName.csv');
+    try {
+      final sink = file.openWrite();
+      sink.write('timestamp,x,y,z\n');
+      for (var entry in _sensorData) {
+        sink.write(
+            '${entry['timestamp']},${entry['x']},${entry['y']},${entry['z']}\n');
+      }
+      await sink.flush();
+      await sink.close();
+      print('Data saved to ${file.path}');
+    } catch (e) {
+      print('Error writing to file: $e');
+    }
   }
 
   void _toggleRecording() {
     if (_isRecording) {
       _subscription.cancel();
+      _samplingTimer.cancel();
+      _fileTimer.cancel();
     } else {
       _startSensor();
     }
@@ -103,6 +149,8 @@ class _MyHomePageState extends State<MyHomePage> {
   void dispose() {
     if (_isRecording) {
       _subscription.cancel();
+      _samplingTimer.cancel();
+      _fileTimer.cancel();
     }
     super.dispose();
   }
@@ -119,7 +167,7 @@ class _MyHomePageState extends State<MyHomePage> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: <Widget>[
             ElevatedButton(
-              onPressed: _isSensorAvailable ? _toggleRecording : null,
+              onPressed: _toggleRecording,
               child: Text(_isRecording ? 'Stop' : 'Start'),
               style: ElevatedButton.styleFrom(
                 padding: EdgeInsets.symmetric(horizontal: 50, vertical: 20),
