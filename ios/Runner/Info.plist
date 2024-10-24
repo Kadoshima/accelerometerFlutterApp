@@ -45,5 +45,17 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>このアプリは位置情報を使用します。</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>このアプリは位置情報を常に使用します。</string>
+
+	<key>io.flutter.embedded_views_preview</key>
+	<true/>
+	<key>GMSApiKey</key>
+	<string>AIzaSyAiWb6sNJD72nSHKi11d_qXPIRbOq9bi9o</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>We need your location to show on the map.</string>
+
 </dict>
 </plist>

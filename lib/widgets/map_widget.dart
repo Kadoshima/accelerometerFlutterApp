@@ -4,53 +4,48 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/data_provider.dart';
 
-class MapWidget extends ConsumerStatefulWidget {
+class MapWidget extends ConsumerWidget {
   @override
-  _MapWidgetState createState() => _MapWidgetState();
-}
-
-class _MapWidgetState extends ConsumerState<MapWidget> {
-  GoogleMapController? _controller;
-  final Set<Marker> _markers = {};
-  final Set<Polyline> _polylines = {};
-  List<LatLng> _path = [];
-
-  @override
-  void initState() {
-    super.initState();
-    // 初期位置を設定（例：東京）
-    _path.add(LatLng(35.6895, 139.6917));
-  }
-
-  @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final dataState = ref.watch(dataProvider);
 
-    // 更新された位置情報を取得
-    dataState.positions.forEach((position) {
-      final latLng = LatLng(position.latitude, position.longitude);
-      _path.add(latLng);
-      _markers.add(Marker(
-        markerId: MarkerId(position.timestamp.toIso8601String()),
-        position: latLng,
-      ));
-    });
+    // マーカーの生成
+    final Set<Marker> markers = dataState.positions
+        .map((position) => Marker(
+              markerId: MarkerId(position.timestamp.toIso8601String()),
+              position: LatLng(position.latitude, position.longitude),
+            ))
+        .toSet();
 
-    if (_path.length > 1) {
-      _polylines.add(Polyline(
-        polylineId: PolylineId('path'),
-        points: _path,
-        color: Colors.blue,
-        width: 4,
-      ));
-    }
+    // パスの生成
+    final List<LatLng> path = dataState.positions
+        .map((position) => LatLng(position.latitude, position.longitude))
+        .toList();
+
+    // ポリラインの生成
+    final Set<Polyline> polylines = {
+      if (path.length > 1)
+        Polyline(
+          polylineId: PolylineId('path'),
+          points: path,
+          color: Colors.blue,
+          width: 4,
+        )
+    };
+
+    // カメラの初期位置
+    final CameraPosition initialCameraPosition = CameraPosition(
+      target:
+          path.isNotEmpty ? path.last : LatLng(35.6895, 139.6917), // デフォルトは東京
+      zoom: 16,
+    );
 
     return GoogleMap(
-      initialCameraPosition: CameraPosition(target: _path.last, zoom: 16),
-      markers: _markers,
-      polylines: _polylines,
+      initialCameraPosition: initialCameraPosition,
+      markers: markers,
+      polylines: polylines,
       onMapCreated: (controller) {
-        _controller = controller;
+        // 必要に応じてコントローラーを保持
       },
       myLocationEnabled: true,
       myLocationButtonEnabled: true,

@@ -8,7 +8,7 @@ import '../models/sensor_data.dart';
 import '../services/upload_service.dart';
 import '../utils/csv_helper.dart'; // CSVHelper を正しくインポート
 import 'auth_provider.dart';
-// path_provider のインポート
+import '../response/login_response.dart';
 
 class DataState {
   final bool isCollecting;
@@ -150,9 +150,9 @@ class DataNotifier extends StateNotifier<DataState> {
 
     // AWSへのアップロード
     final authState = _ref.read(authProvider);
-    if (authState.token != null) {
+    if (authState.accessToken != null) {
       try {
-        await _uploadService.uploadCSV(csvData, authState.token!);
+        await _uploadService.uploadCSV(csvData, authState.accessToken!);
         print('AWSへのアップロードに成功しました。');
       } catch (e) {
         // アップロード失敗時のエラーハンドリング
